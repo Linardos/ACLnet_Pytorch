@@ -55,9 +55,8 @@ def acl_vgg(data, stateful):
 
 
     outs = TimeDistributed(dcn)(data)
-    # attention = TimeDistributed(Conv2D(256, (3, 3), padding='same', activation='relu'))(outs)
-    # attention = TimeDistributed(Conv2D(128, (3, 3), padding='same', activation='relu'))(attention)
-    # attention = TimeDistributed(Conv2D(1, (1, 1), padding='same', activation='sigmoid'))(attention)
+
+    attention = TimeDistributed(att_module)(outs)
 
     f_attention = TimeDistributed()(attention.view(attention.size()[0], -1)) #flatten
     f_attention = TimeDistributed()(f_attention.expand(512)) #repeatvector
@@ -66,10 +65,18 @@ def acl_vgg(data, stateful):
     m_outs = outs * f_attention #elementwise multiplication
     outs = outs + m_outs
 
+    ### This needs to change
     clstm = ConvLSTMCell(use_gpu=False, input_size=512, hidden_size=256, kernel_size=(3,3))
     outs = clstm(outs)
+    ###
 
-    outs = TimeDistributed(Conv2D(1, (1, 1), padding='same', activation='sigmoid'))(outs)
-    outs = TimeDistributed(UpSampling2D(4))(outs)
-    attention = TimeDistributed(UpSampling2D(2))(attention)
-    return [outs, outs, outs, attention, attention, attention]#
+    produce_smaps = nn.Sequential(
+                    #InputDimensions will be figured out after changing the ConvLSTM
+                    Conv2D(InputDimensions, 1, kernel_size=(1, 1), padding=0)
+                    Sigmoid()
+                    Upsample(scale_factor=4, mode='nearest')
+                    )
+
+    outs = TimeDistributed(produce_smaps)(outs)
+    attention = TimeDistributed(Upsample(scale_factor=2, mode='nearest'))(attention)
+    return [outs, outs, outs, attention, attention, attention]
